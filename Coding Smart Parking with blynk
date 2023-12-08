@@ -1,16 +1,13 @@
 /*************************************************************
 
-  This example shows how value can be pushed from Arduino to
-  the Blynk App.
+  This sketch shows how to write values to Virtual Pins
 
-  WARNING :
-  For this example you'll need Adafruit DHT sensor libraries:
-    https://github.com/adafruit/Adafruit_Sensor
-    https://github.com/adafruit/DHT-sensor-library
+  NOTE:
+  BlynkTimer provides SimpleTimer functionality:
+    http://playground.arduino.cc/Code/SimpleTimer
 
   App dashboard setup:
-    Value Display widget attached to V5
-    Value Display widget attached to V6
+    Value Display widget attached to Virtual Pin V5
  *************************************************************/
 
 /* Fill-in information from Blynk Device Info here */
@@ -22,88 +19,109 @@
 #define BLYNK_PRINT Serial
 
 
-//#include <WiFi.h>
-//#include <WiFiClient.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
 #include <BlynkSimpleEsp32.h>
-#include <DHT.h>
-#include <Stepper.h>
+#include <Ultrasonic.h>
+#include <ESP32Servo.h>
+
+Servo myservo;
+int counter = 0;
+int pos = 0;
+int JumblahDeteksi = 0;
 // Your WiFi credentials.
 // Set password to "" for open networks.
-char ssid[] = "oki";
-char pass[] = "12345679";
-
-#define DHTPIN 2          // What digital pin we're connected to
-#define echoPin 13 // Pin Echo sensor HC-SR04
-#define trigPin 12 // Pin Trig sensor HC-SR04
-
-// Uncomment whatever type you're using!
-#define DHTTYPE DHT11     // DHT 11
-//#define DHTTYPE DHT22   // DHT 22, AM2302, AM2321
-//#define DHTTYPE DHT21   // DHT 21, AM2301
-Stepper stepper(200, 14, 27, 26, 25);
-
-DHT dht(DHTPIN, DHTTYPE);
+char ssid[] = "oki";  // your ssid
+char pass[] = "12345677";           // your passchar pass[] = "YourPassword";
+Ultrasonic ultrasonic(2, 5);
+int distance;
+int modeAuto = 0;
 BlynkTimer timer;
 
 // This function sends Arduino's up time every second to Virtual Pin (5).
 // In the app, Widget's reading frequency should be set to PUSH. This means
 // that you define how often to send data to Blynk App.
-void sendSensor()
-{
-  float h = dht.readHumidity();
-  float t = dht.readTemperature(); // or dht.readTemperature(true) for Fahrenheit
-
-  if (isnan(h) || isnan(t)) {
-    Serial.println("Failed to read from DHT sensor!");
-    return;
+BLYNK_WRITE (V1){
+  int pinValue = param.asInt(); // assigning incoming value from pin V1 to a variable
+      Blynk.virtualWrite(V1, pinValue);
+       Serial.println(pinValue);
+  if (pinValue == 0 && modeAuto == 0){
+    digitalWrite(21,0);
   }
-  // You can send any value at any time.
-  // Please don't send more that 10 values per second.
-  Blynk.virtualWrite(V5, h);
-  Blynk.virtualWrite(V6, t);
- 
+  else if(pinValue == 1 && modeAuto == 0){
+    digitalWrite(21,1);
+  }
+}
+BLYNK_WRITE (V0) {
+  int Value = param.asInt(); // assigning incoming value from pin V1 to a variable
+      Blynk.virtualWrite(V0,Value);
+      Serial.println(Value);
+  if (Value == 1 && modeAuto == 0){
+    digitalWrite(21,0);
+  }
+  else if(Value== 0 && modeAuto == 1){
+    digitalWrite(21,0);
+  }
+}
+BLYNK_WRITE (V4) {
+  int Value = param.asInt(); // assigning incoming value from pin V1 to a variable
+      Blynk.virtualWrite(V4,Value);
+      Serial.println(Value);
+  if (Value == 1 && modeAuto == 0){
+    digitalWrite(22,1);
+    myservo.write(90);
+  }
+  else if(Value== 0 ){
+    modeAuto = 0;
+    digitalWrite(22,0);
+    myservo.write(0);
+  }
+}
+void myTimerEvent() {
+  distance = ultrasonic.read();
+  Serial.print("jarak di CM :");
+  Serial.println(ultrasonic.read());
+  if (distance > 10) {
+    JumblahDeteksi = 0;
+    Serial.print("Jumblah deteksi: ");
+    Serial.println(counter);
+    digitalWrite(23, LOW);
+    myservo.write(90);
+    
+  } else {
+     JumblahDeteksi = 1;
+    digitalWrite(23, HIGH);
+    myservo.write(0);
+    Blynk.virtualWrite(V2, ultrasonic.read());
+    Blynk.virtualWrite(V3, counter);
+  }
+  delay(500);
+  if (JumblahDeteksi != pos){
+    if (JumblahDeteksi == 1){
+      counter = counter + 1;
+    }
+  }
 }
 
-void setup()
-{
+void setup() {
   // Debug console
+  pinMode(23, OUTPUT);
+  pinMode(22, OUTPUT);
+  pinMode(21, OUTPUT);
   Serial.begin(115200);
-
+  myservo.attach(4);
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
   // You can also specify server:
   //Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass, "blynk.cloud", 80);
   //Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass, IPAddress(192,168,1,100), 8080);
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
-  
-  stepper.setSpeed(50); // Set kecepatan motor stepper (dalam RPM)
-  dht.begin();
 
   // Setup a function to be called every second
-  timer.setInterval(1000L, sendSensor);
+  timer.setInterval(1000L, myTimerEvent);
 }
 
-void loop()
-{
+  // process received value
+
+void loop() {
   Blynk.run();
-  long duration, distance;
-  
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  
-  duration = pulseIn(echoPin, HIGH);
-  distance = duration * 0.034 / 2;
-    Serial.print("Distance = ");        //Output distance on arduino serial monitor
-  Serial.println(distance);
-  timer.run();
-   Blynk.virtualWrite(V1, distance);
-
-    if (distance < 20) { // Misalnya, jika jarak kurang dari 20 cm, putar motor stepper
-    stepper.step(100); // Langkah motor stepper sebanyak 100 langkah
-    delay(500); // Delay sebelum langkah selanjutnya
-}
-
+  timer.run();  // Initiates BlynkTimer
 }
